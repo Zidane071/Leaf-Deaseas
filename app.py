@@ -1,4 +1,7 @@
 from __future__ import division, print_function
+import streamlit as st
+from PIL import Image, ImageOps
+
 # coding=utf-8
 import sys
 import os
@@ -10,15 +13,6 @@ import tensorflow as tf
 import pathlib
 import wget
 
-# from tensorflow.compat.v1.compat import ConfigProto
-# from tensorflow.compat.v1 import InteractiveSession
-#from tensorflow.python.client.session import InteractiveSession
-
-# config = tf.ConfigProto()
-# config.gpu_options.per_process_gpu_memory_fraction = 0.2
-# config.gpu_options.allow_growth = True
-# session = InteractiveSession(config=config)
-# Keras
 from tensorflow.keras.applications.resnet50 import preprocess_input
 from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing import image
@@ -63,60 +57,44 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 #         return 'v'
 
 # Load your trained model
+
 model = load_model(MODEL_PATH)
+def model_predict(img, MODEL_PATH):
+    # Create the array of the right shape to feed into the keras model
+    data = np.ndarray(shape=(1, 224, 224, 3), dtype=np.float32)
+    image = img
+    #image sizing
+    size = (224, 224)
+    image = ImageOps.fit(image, size, Image.ANTIALIAS)
 
+    #turn the image into a numpy array
+    image_array = np.asarray(image)
+    # Normalize the image
+    normalized_image_array = (image_array.astype(np.float32) / 127.0) - 1
 
-def model_predict(img_path, model):
-    print(img_path)
-    img = image.load_img(img_path, target_size=(224, 224))
+    # Load the image into the array
+    data[0] = normalized_image_array
 
-    # Preprocessing the image
-    x = image.img_to_array(img)
-    # x = np.true_divide(x, 255)
-    ## Scaling
-    x = x / 255
-    x = np.expand_dims(x, axis=0)
+    # run the inference
+    prediction = model.predict(data)
+    return np.argmax(prediction, axis=1) # return position of the highest probability
 
-    # Be careful how your trained model deals with the input
-    # otherwise, it won't make correct prediction!
-    # x = preprocess_input(x)
+st.title("Cotton Leaf Disease Prediction")
+st.header("Transfer Learning Using RESNET51V2")
+st.text("Upload a Cotton Leaf Disease or Non-Diseased Image")
 
-    preds = model.predict(x)
-    preds = np.argmax(preds, axis=1)
-    if preds == 0:
-        preds = "The leaf is a diseased cotton leaf."
-    elif preds == 1:
-        preds = "The leaf is a diseased cotton plant."
-    elif preds == 2:
-        preds = "The leaf is a fresh cotton leaf."
+uploaded_file = st.file_uploader("Choose a Cotton Leaf Image...", type="jpg")
+if uploaded_file is not None:
+    image = Image.open(uploaded_file)
+    st.image(image, caption='Uploaded Cotton Leaf Image', use_column_width=True)
+    st.write("")
+    st.write("Classifying...")
+    label = model_predict(image, 'model_resnet.hdf5')
+    if label == 0:
+        st.write("The leaf is a diseased cotton leaf.")
+    elif label == 1:
+        st.write("The leaf is a diseased cotton plant.")
+    elif label == 2:
+        st.write("The leaf is a fresh cotton leaf.")
     else:
-        preds = "The leaf is a fresh cotton plant."
-
-    return preds
-
-
-@app.route('/', methods=['GET', 'POST'])
-def index():
-    # Main page
-    if request.method == 'POST':
-        # Get the file from post request
-        print(request.files, request.form, request.args)
-        f = None
-        if 'image' in request.files: f = request.files['image']
-        if f:
-            # Save the file to ./uploads
-            file_path = os.path.join(
-                app.config['UPLOAD_FOLDER'], secure_filename(f.filename))
-            f.save(file_path)
-
-            # Make prediction
-            preds = model_predict(file_path, model)
-            result = preds
-            return render_template('index.html', result=result, img=secure_filename(f.filename))
-        return render_template('index.html', result=None, err='Failed to receive file')
-    # First time
-    return render_template('index.html', result=None)
-
-
-if __name__ == '__main__':
-    app.run(port=5001, debug=True)
+        st.write("The leaf is a fresh cotton plant.")
